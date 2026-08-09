@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>НЕ НАЖМИ</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:#080a0f;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display",sans-serif;overflow:hidden}
+body{min-height:100dvh;display:flex;justify-content:center}
+#app{width:min(100vw,600px);min-height:100dvh;padding:18px 16px;display:flex;flex-direction:column}
+header{display:flex;justify-content:space-between;align-items:flex-start}
+h1{font-size:31px;line-height:.95;margin:0;font-weight:950;letter-spacing:-1.5px}
+#round{color:#929baa;font-size:14px;margin-top:5px}
+#score{font-size:25px;font-weight:900}
+#arena{position:relative;flex:1;min-height:500px;margin:16px 0;border-radius:24px;background:#11151e;border:1px solid #242c3a;overflow:hidden;touch-action:manipulation}
+.dot{position:absolute;width:62px;height:62px;border-radius:50%;display:grid;place-items:center;font-size:27px;font-weight:900;box-shadow:0 7px 18px #0008;animation:pop .12s ease-out}
+.safe{background:#62d48b;color:#07130c}.danger{background:#ef5b5b;color:#fff}.special{background:#ffd25a;color:#201800}
+@keyframes pop{from{transform:scale(.3);opacity:.2}to{transform:scale(1);opacity:1}}
+#message{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:#080a0fe8;z-index:5;text-align:center;padding:25px}
+#message.show{display:flex}
+.card{background:#171c27;border:1px solid #30394a;border-radius:25px;padding:28px 22px;width:min(90%,390px)}
+.card h2{font-size:34px;margin:0 0 8px}.card p{color:#929baa;margin:0 0 20px;line-height:1.4}
+button{border:0;border-radius:16px;background:#fff;color:#0a0c10;font-size:17px;font-weight:900;padding:15px 22px;width:100%}
+#bar{height:9px;border-radius:99px;background:#202735;overflow:hidden;margin-bottom:10px}
+#progress{height:100%;width:100%;background:#fff;transform-origin:left;transition:width .05s linear}
+#hint{text-align:center;color:#929baa;font-size:13px;margin-top:5px}
+#flash{position:absolute;inset:0;pointer-events:none;opacity:0;background:#fff}
+@media(max-height:700px){#arena{min-height:400px}.dot{width:54px;height:54px;font-size:23px}}
+</style>
+</head>
+<body>
+<div id="app">
+<header>
+<div><h1>НЕ НАЖМИ</h1><div id="round">Раунд 1 • найди безопасные</div></div>
+<div id="score">0</div>
+</header>
+<div id="bar"><div id="progress"></div></div>
+<div id="arena"><div id="flash"></div><div id="message"><div class="card"><h2 id="result">ПОБЕДА</h2><p id="sub"></p><button id="again">Играть снова</button></div></div></div>
+<div id="hint">Нажимай только на безопасные кружки</div>
+</div>
+<script>
+const arena=document.querySelector('#arena'), scoreEl=document.querySelector('#score'), roundEl=document.querySelector('#round'), bar=document.querySelector('#progress');
+const message=document.querySelector('#message'), result=document.querySelector('#result'), sub=document.querySelector('#sub'), again=document.querySelector('#again'), flash=document.querySelector('#flash');
+let round=1,score=0,alive=true,targets=[],deadline=0,timer=0,roundTime=1700;
+
+function rand(a,b){return Math.random()*(b-a)+a}
+function clearTargets(){targets.forEach(x=>x.remove());targets=[]}
+function start(){
+ alive=true;message.classList.remove('show');round=1;score=0;nextRound();
+}
+function nextRound(){
+ clearTargets();
+ roundTime=Math.max(620,1700-(round-1)*95);
+ const count=Math.min(16,4+round*2);
+ const safeCount=Math.max(1,Math.floor(count*.35));
+ let cells=[];
+ for(let i=0;i<count;i++){
+   let d=document.createElement('div');
+   let isSafe=i<safeCount;
+   d.className='dot '+(isSafe?'safe':'danger');
+   d.textContent=isSafe?'✓':'×';
+   let rect=arena.getBoundingClientRect(), size=62;
+   let x=rand(10,Math.max(11,rect.width-size-10)),y=rand(20,Math.max(21,rect.height-size-10));
+   d.style.left=x+'px';d.style.top=y+'px';
+   d.dataset.safe=isSafe?'1':'0';
+   d.addEventListener('pointerdown',hit,{once:true});
+   arena.appendChild(d);targets.push(d);
+ }
+ // Special bonus appears from round 4.
+ if(round>=4){
+   let d=document.createElement('div');d.className='dot special';d.textContent='+';
+   let rect=arena.getBoundingClientRect();
+   d.style.left=rand(10,rect.width-72)+'px';d.style.top=rand(20,rect.height-72)+'px';
+   d.dataset.special='1';d.addEventListener('pointerdown',hit,{once:true});
+   arena.appendChild(d);targets.push(d);
+ }
+ deadline=performance.now()+roundTime;
+ roundEl.textContent=`Раунд ${round} • безопасных: ${safeCount}`;
+}
+function hit(e){
+ if(!alive)return;
+ let d=e.currentTarget;
+ if(d.dataset.special){
+   score+=50;scoreEl.textContent=score;d.remove();return;
+ }
+ if(d.dataset.safe==='1'){
+   score+=10*round;scoreEl.textContent=score;
+   d.remove();targets=targets.filter(x=>x!==d);
+   if(!targets.some(x=>x.dataset.safe==='1')){round++;setTimeout(nextRound,150)}
+ }else{
+   alive=false;flash.style.opacity='.85';setTimeout(()=>flash.style.opacity='0',80);
+   result.textContent='БУМ!';
+   sub.textContent=`Ты нажал не туда. Счёт: ${score}. Ты дошёл до раунда ${round}.`;
+   message.classList.add('show');
+ }
+}
+function loop(t){
+ if(alive){
+   let left=Math.max(0,deadline-t),pct=left/roundTime;
+   bar.style.width=(pct*100)+'%';
+   if(left<=0){
+     alive=false;result.textContent='ВРЕМЯ!';
+     sub.textContent=`Счёт: ${score}. Раунд ${round} оказался слишком быстрым.`;
+     message.classList.add('show');
+   }
+ }
+ requestAnimationFrame(loop);
+}
+again.onclick=start;
+start();requestAnimationFrame(loop);
+</script>
+</body>
+</html>
