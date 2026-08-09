@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Последний шаг</title>
+<style>
+:root{--bg:#090b10;--panel:#141923;--tile:#283140;--text:#fff;--muted:#8e99aa}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display",sans-serif;min-height:100%;overflow:hidden}
+body{display:flex;justify-content:center}
+#app{width:min(100vw,620px);min-height:100dvh;padding:18px 14px 20px;display:flex;flex-direction:column}
+header{display:flex;align-items:center;justify-content:space-between}
+h1{font-size:28px;margin:0;font-weight:900;letter-spacing:-1px}
+#status{font-size:14px;color:var(--muted);margin-top:3px}
+#time{font-variant-numeric:tabular-nums;font-weight:800}
+#game{position:relative;margin:18px auto 12px;width:min(94vw,560px);aspect-ratio:9/13;max-height:72dvh}
+#board{width:100%;height:100%;display:grid;grid-template-columns:repeat(9,1fr);grid-template-rows:repeat(13,1fr);gap:4px;touch-action:none}
+.tile{background:var(--tile);border-radius:8px;position:relative;box-shadow:inset 0 -2px 0 rgba(0,0,0,.18);transition:transform .12s,opacity .25s,background .15s}
+.tile.crack{background:#b9513f;animation:pulse .55s infinite alternate}
+.tile.crack:after{content:attr(data-t);position:absolute;inset:0;display:grid;place-items:center;font-size:11px;font-weight:900}
+.tile.gone{opacity:.08;background:#000;transform:scale(.75)}
+@keyframes pulse{to{background:#e8a33d}}
+.player{position:absolute;width:6.5%;aspect-ratio:1;border-radius:50%;transform:translate(-50%,-50%);z-index:3;border:3px solid #10131a;display:grid;place-items:center;font-size:11px;font-weight:900;transition:left .12s,top .12s}
+.p0{box-shadow:0 0 18px rgba(89,182,255,.7)}
+#overlay{position:absolute;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;z-index:10;border-radius:14px;text-align:center;padding:24px}
+#overlay.show{display:flex}
+.card{background:#171c27;border:1px solid #2b3443;border-radius:24px;padding:28px 22px;box-shadow:0 20px 60px rgba(0,0,0,.45)}
+.card h2{margin:0 0 8px;font-size:32px}.card p{color:var(--muted);margin:0 0 18px}
+button{border:0;border-radius:16px;padding:15px 22px;background:#fff;color:#0b0d12;font-size:17px;font-weight:800}
+#controls{display:flex;gap:10px;justify-content:center;align-items:center}
+.ctrl{width:58px;height:52px;padding:0;background:#171c27;color:#fff;border:1px solid #2c3545;font-size:23px}
+#hint{text-align:center;color:var(--muted);font-size:13px;margin-top:10px}
+#players{text-align:center;color:#c8ced8;font-size:13px}
+</style>
+</head>
+<body>
+<div id="app">
+<header><div><h1>ПОСЛЕДНИЙ ШАГ</h1><div id="status">Остаться последним</div></div><div id="time">0:00</div></header>
+<div id="game"><div id="board"></div><div id="overlay"><div class="card"><h2 id="result"></h2><p>Поле закончилось.</p><button id="again">Играть снова</button></div></div></div>
+<div id="players">4 игрока • 1 человек + 3 бота</div>
+<div id="controls"><button class="ctrl" data-dir="left">←</button><button class="ctrl" data-dir="up">↑</button><button class="ctrl" data-dir="down">↓</button><button class="ctrl" data-dir="right">→</button></div>
+<div id="hint">Свайпни по полю или используй кнопки</div>
+</div>
+<script>
+const C=9,R=13,COUNT=4,CRACK=.72,MOVE=.23;
+const colors=['#59b6ff','#ff5c73','#ffd45a','#b978ff'];
+let tiles=[],players=[],over=false,winner=-1,start=0,last=0,timer;
+const board=document.querySelector('#board'),game=document.querySelector('#game');
+const overlay=document.querySelector('#overlay'),result=document.querySelector('#result'),timeEl=document.querySelector('#time');
+
+function idx(x,y){return y*C+x}
+function inside(x,y){return x>=0&&x<C&&y>=0&&y<R}
+function newGame(){
+  tiles=Array.from({length:C*R},()=>({s:0,t:0}));
+  const starts=[[1,1],[C-2,1],[1,R-2],[C-2,R-2]];
+  players=starts.map((p,i)=>({id:i,x:p[0],y:p[1],alive:true,cd:0,target:[p[0],p[1]],change:.5+Math.random()}));
+  over=false;winner=-1;start=performance.now();last=start;overlay.classList.remove('show');draw();
+}
+function stepDir(d){
+  if(over)return;
+  const p=players[0]; if(!p.alive)return;
+  let dx=0,dy=0;
+  if(d==='left')dx=-1;if(d==='right')dx=1;if(d==='up')dy=-1;if(d==='down')dy=1;
+  move(p,dx,dy);
+}
+function move(p,dx,dy){
+  if(!p.alive||p.cd>0)return;
+  const nx=p.x+dx,ny=p.y+dy;
+  if(!inside(nx,ny)||tiles[idx(nx,ny)].s===2)return;
+  p.x=nx;p.y=ny;p.cd=MOVE;
+  const t=tiles[idx(nx,ny)];
+  if(t.s===0){t.s=1;t.t=CRACK}
+}
+function bot(p,dt){
+  p.cd=Math.max(0,p.cd-dt);p.change-=dt;
+  if(p.cd>0)return;
+  if(p.change<=0){p.change=.35+Math.random()*.7;
+    let best=null,score=-1e9;
+    for(let k=0;k<12;k++){let x=Math.floor(Math.random()*C),y=Math.floor(Math.random()*R),t=tiles[idx(x,y)];
+      if(t.s===2)continue;let s=(t.s===0?3:0)-Math.abs(x-p.x)-Math.abs(y-p.y);
+      if(s>score){score=s;best=[x,y]}
+    } if(best)p.target=best;
+  }
+  let dx=Math.sign(p.target[0]-p.x),dy=Math.sign(p.target[1]-p.y);
+  if(Math.random()<.25){dx=0;dy=0;let ds=[[1,0],[-1,0],[0,1],[0,-1]][Math.floor(Math.random()*4)];dx=ds[0];dy=ds[1]}
+  if(Math.abs(p.target[0]-p.x)>Math.abs(p.target[1]-p.y))dy=0;else dx=0;
+  move(p,dx,dy);
+}
+function update(ts){
+  const dt=Math.min(.05,(ts-last)/1000);last=ts;
+  if(!over){
+    for(const t of tiles)if(t.s===1){t.t-=dt;if(t.t<=0)t.s=2}
+    for(const p of players)if(p.alive){
+      if(p.id===0)p.cd=Math.max(0,p.cd-dt);else bot(p,dt);
+      if(tiles[idx(p.x,p.y)].s===2)p.alive=false;
+    }
+    const alive=players.filter(p=>p.alive);
+    if(alive.length<=1){over=true;winner=alive.length?alive[0].id:-1;result.textContent=winner>=0?'ИГРОК '+(winner+1)+' ПОБЕДИЛ':'НИЧЬЯ';overlay.classList.add('show')}
+    timeEl.textContent=Math.floor((ts-start)/1000/60)+':'+String(Math.floor((ts-start)/1000)%60).padStart(2,'0');
+    draw();
+  }
+  requestAnimationFrame(update);
+}
+function draw(){
+  board.innerHTML='';
+  tiles.forEach((t,i)=>{let e=document.createElement('div');e.className='tile '+(t.s===1?'crack ':'')+(t.s===2?'gone':'');if(t.s===1)e.dataset.t=t.t.toFixed(1);board.appendChild(e)});
+  for(const p of players)if(p.alive){
+    let e=document.createElement('div');e.className='player p'+p.id;e.style.background=colors[p.id];e.textContent=p.id+1;
+    e.style.left=((p.x+.5)/C*100)+'%';e.style.top=((p.y+.5)/R*100)+'%';game.appendChild(e);
+  }
+}
+document.querySelectorAll('.ctrl').forEach(b=>b.addEventListener('pointerdown',()=>stepDir(b.dataset.dir)));
+document.querySelector('#again').onclick=newGame;
+let sx=0,sy=0;
+game.addEventListener('touchstart',e=>{const t=e.changedTouches[0];sx=t.clientX;sy=t.clientY},{passive:true});
+game.addEventListener('touchend',e=>{const t=e.changedTouches[0],dx=t.clientX-sx,dy=t.clientY-sy;if(Math.max(Math.abs(dx),Math.abs(dy))<30)return;stepDir(Math.abs(dx)>Math.abs(dy)?(dx>0?'right':'left'):(dy>0?'down':'up'))},{passive:true});
+window.addEventListener('keydown',e=>{if(e.key==='ArrowLeft'||e.key==='a')stepDir('left');if(e.key==='ArrowRight'||e.key==='d')stepDir('right');if(e.key==='ArrowUp'||e.key==='w')stepDir('up');if(e.key==='ArrowDown'||e.key==='s')stepDir('down');if(e.key.toLowerCase()==='r')newGame()});
+newGame();requestAnimationFrame(update);
+</script>
+</body>
+</html>
